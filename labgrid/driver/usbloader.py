@@ -159,6 +159,7 @@ class UUUDriver(Driver, BootstrapProtocol):
 
     image = attr.ib(default=None)
     script = attr.ib(default='', validator=attr.validators.instance_of(str))
+    extra_files = attr.ib(default=[], validator=attr.validators.instance_of(list))
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -209,6 +210,10 @@ class UUUDriver(Driver, BootstrapProtocol):
         image_mf = ManagedFile(image, self.loader)
         image_mf.sync_to_resource(symlink=image_link)
         cmd += [image_link]
+
+        for file in self.extra_files or []:
+            file_mf = ManagedFile(file, self.loader)
+            file_mf.sync_to_resource(symlink=f"{link_path}/{os.path.basename(file)}")
 
         # run the loader
         processwrapper.check_output(

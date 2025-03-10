@@ -179,7 +179,7 @@ class UUUDriver(Driver, BootstrapProtocol):
         assert filename is not None or self.image is not None
 
         image = filename or self.target.env.config.get_image_path(self.image)
-        cmd = [self.tool]
+        cmd = [self.tool, "-v"]
 
 
         if self.script:

@@ -3,11 +3,12 @@ import attr
 
 from ..factory import target_factory
 from ..protocol import BootstrapProtocol
+from ..resource.common import NetworkResource
 from ..step import step
 from .common import Driver
 from ..util.managedfile import ManagedFile
 from ..util.timeout import Timeout
-from ..util.helper import processwrapper
+from ..util.helper import get_user, processwrapper
 
 
 @target_factory.reg_driver
@@ -179,17 +180,35 @@ class UUUDriver(Driver, BootstrapProtocol):
         assert filename is not None or self.image is not None
 
         image = filename or self.target.env.config.get_image_path(self.image)
+        prefix = self.loader.command_prefix
         cmd = [self.tool, "-v"]
 
+        if isinstance(self.loader, NetworkResource):
+            # Skip the synchronisation entirely when running as a local loader, as that avoids the need to
+            # manage symlinks.
+            if self.script:
+                cmd += ["-b", self.script]
+            cmd += image
+            processwrapper.check_output(prefix + cmd)
+            return
+
+        # create temporary directory to create symbolic links in, as `uuu` can look up auxillary
+        # files releative to the invoked script
+        rpath = f"/var/cache/labgrid/{get_user()}"
+        processwrapper.check_output(self.loader.command_prefix + ["mkdir", "-p", rpath])
+        stdout = processwrapper.check_output(prefix + ["mktemp", "-d", f"{rpath}/uuu.XXXXXXXX"])
+        link_path = stdout.decode("utf-8").strip()
 
         if self.script:
+            script_link = f"{link_path}/{os.path.basename(self.script)}"
             script_mf = ManagedFile(self.script, self.loader)
-            script_mf.sync_to_resource()
-            cmd += ["-b", script_mf.get_remote_path()]
+            script_mf.sync_to_resource(symlink=script_link)
+            cmd += ["-b", script_link]
 
+        image_link = f"{link_path}/{os.path.basename(image)}"
         image_mf = ManagedFile(image, self.loader)
-        image_mf.sync_to_resource()
-        cmd += [image_mf.get_remote_path()]
+        image_mf.sync_to_resource(symlink=image_link)
+        cmd += [image_link]
 
         # run the loader
         processwrapper.check_output(
